@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use soroban_client::account::{Account, AccountBehavior};
+use soroban_client::address::{Address, AddressTrait};
 use soroban_client::contract::{ContractBehavior, Contracts};
 use soroban_client::server::{Options, Server};
 use soroban_client::soroban_rpc::soroban_rpc::RawSimulateTransactionResponse;
@@ -96,7 +97,7 @@ pub trait ReflectorContract {
     fn version(&self) -> impl std::future::Future<Output = Result<u32, Self::Error>>;
 
     //get contract admin address
-    //fn admin(&self) -> impl std::future::Future<Output = Option<ScAddress>>;
+    fn admin(&self) -> impl std::future::Future<Output = Result<Address, Self::Error>>;
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -145,7 +146,7 @@ impl TryFrom<ScVal> for PriceData {
 }
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum Asset {
-    Stellar([u8; 32]),
+    Stellar([u8; 32]), // Address does not implement Debug, Ord, ...
     Other(String),
 }
 
@@ -473,6 +474,19 @@ impl ReflectorContract for ReflectorClient {
             let decoded = ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none());
             match decoded {
                 Ok(ScVal::U32(v)) => return Ok(v),
+                _ => return Err(ReflectorError::DefaulError),
+            }
+        }
+        Err(ReflectorError::DefaulError)
+    }
+
+    async fn admin(&self) -> Result<Address, Self::Error> {
+        let response = self.invoke("admin", None).await?;
+        if let Some(vres) = response.results {
+            let res = vres.first().unwrap().to_owned();
+            let decoded = ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none());
+            match decoded {
+                Ok(scval) => return Ok(Address::from_sc_val(&scval).unwrap()),
                 _ => return Err(ReflectorError::DefaulError),
             }
         }

@@ -1,4 +1,5 @@
 use soroban_client::{
+    address::AddressTrait as _,
     network::{NetworkPassphrase, Networks},
     server::Options,
 };
@@ -26,9 +27,16 @@ async fn test_lasttimestamp() {
     let ts = client
         .last_timestamp()
         .await
-        .expect("Lastimestamp could not be retrieved");
+        .expect("lastimestamp could not be retrieved");
 
-    println!("Last timestamp: {}", ts);
+    println!("last timestamp: {}", ts);
+}
+#[tokio::test]
+async fn test_admin() {
+    let client = get_client();
+    let admin = client.admin().await.expect("admin could not be retrieved");
+
+    println!("admin: {}", admin.to_string());
 }
 
 #[tokio::test]
