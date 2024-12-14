@@ -1,6 +1,6 @@
 # Reflector Oracle Smart Contract Client
 
-This project provides rust bindings for 
+This project provides rust bindings for [Reflector oracle smart contract](https://github.com/reflector-network/reflector-contract).
 
 ```rust 
 
@@ -27,7 +27,6 @@ use reflector_client::{Asset, ReflectorClient, ReflectorContract};
             headers: None,
         },
     )
-    let client = get_client();
 
     // Get the decimals used by the contract
     let decimals = client.decimals().await?;
