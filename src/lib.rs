@@ -15,55 +15,87 @@ use thiserror::Error;
 
 pub trait ReflectorContract {
     type Error;
+
+    /// get base asset the price is reported in
     fn base(&self) -> impl std::future::Future<Output = Result<Asset, Self::Error>>;
+
+    ///get number of decimal places used to represent price for all assets quoted by the oracle
     fn decimals(&self) -> impl std::future::Future<Output = Result<u32, Self::Error>>;
-    fn resolution(&self) -> impl std::future::Future<Output = Result<u32, Self::Error>>;
-    fn period(&self) -> impl std::future::Future<Output = Result<Option<u64>, Self::Error>>;
+
+    ///get all assets quoted by the contract
     fn assets(&self) -> impl std::future::Future<Output = Result<Vec<Asset>, Self::Error>>;
+
+    ///get the most recent price update timestamp
     fn last_timestamp(&self) -> impl std::future::Future<Output = Result<u64, Self::Error>>;
+
+    ///get asset price in base asset at specific timestamp
     fn price(
         &self,
         asset: Asset,
         timestamp: u64,
     ) -> impl std::future::Future<Output = Result<Option<PriceData>, Self::Error>>;
+
+    ///get the most recent price for an asset
     fn lastprice(
         &self,
         asset: Asset,
     ) -> impl std::future::Future<Output = Result<Option<PriceData>, Self::Error>>;
+
+    ///get last N price records for the given asset
     fn prices(
         &self,
         asset: Asset,
         records: u32,
     ) -> impl std::future::Future<Output = Result<Option<Vec<PriceData>>, Self::Error>>;
+
+    ///get the most recent cross price record for the pair of assets
     fn x_last_price(
         &self,
         base_asset: Asset,
         quote_asset: Asset,
     ) -> impl std::future::Future<Output = Result<Option<PriceData>, Self::Error>>;
+
+    ///get the cross price for the pair of assets at specific timestamp
     fn x_price(
         &self,
         base_asset: Asset,
         quote_asset: Asset,
         timestamp: u64,
     ) -> impl std::future::Future<Output = Result<Option<PriceData>, Self::Error>>;
+
+    ///get last N cross price records of for the pair of assets
     fn x_prices(
         &self,
         base_asset: Asset,
         quote_asset: Asset,
         records: u32,
     ) -> impl std::future::Future<Output = Result<Option<Vec<PriceData>>, Self::Error>>;
+
+    ///get the time-weighted average price for the given asset over N recent records
     fn twap(
         &self,
         asset: Asset,
         records: u32,
     ) -> impl std::future::Future<Output = Result<Option<i128>, Self::Error>>;
+
+    ///get the time-weighted average cross price for the given asset pair over N recent records
     fn x_twap(
         &self,
         base_asset: Asset,
         quote_asset: Asset,
         records: u32,
     ) -> impl std::future::Future<Output = Result<Option<i128>, Self::Error>>;
+
+    ///get price feed resolution (default tick period timeframe, in seconds)
+    fn resolution(&self) -> impl std::future::Future<Output = Result<u32, Self::Error>>;
+
+    ///get historical records retention period, in seconds
+    fn period(&self) -> impl std::future::Future<Output = Result<Option<u64>, Self::Error>>;
+
+    ///get contract protocol version
     fn version(&self) -> impl std::future::Future<Output = Result<u32, Self::Error>>;
+
+    //get contract admin address
     //fn admin(&self) -> impl std::future::Future<Output = Option<ScAddress>>;
 }
 
