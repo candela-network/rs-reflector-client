@@ -1,7 +1,7 @@
 use soroban_client::{
     address::AddressTrait as _,
     network::{NetworkPassphrase, Networks},
-    server::Options,
+    Options,
 };
 
 use crate::{Asset, ReflectorClient, ReflectorContract};
@@ -13,11 +13,7 @@ fn get_client() -> ReflectorClient {
         contract_id,
         Networks::public().to_string(),
         rpc_url,
-        Options {
-            allow_http: None,
-            timeout: Some(1000),
-            headers: None,
-        },
+        Options::default(),
     )
 }
 

@@ -4,14 +4,12 @@ use std::rc::Rc;
 use soroban_client::account::{Account, AccountBehavior};
 use soroban_client::address::{Address, AddressTrait};
 use soroban_client::contract::{ContractBehavior, Contracts};
-use soroban_client::server::{Options, Server};
-use soroban_client::soroban_rpc::soroban_rpc::RawSimulateTransactionResponse;
+use soroban_client::soroban_rpc::SimulateTransactionResponse;
 use soroban_client::transaction::TransactionBuilder;
 use soroban_client::transaction_builder::{TransactionBuilderBehavior, TIMEOUT_INFINITE};
-use soroban_client::xdr::xdr::next::int128_helpers::*;
-use soroban_client::xdr::xdr::next::{
-    Hash, Limits, ReadXdr, ScAddress, ScMap, ScSymbol, ScVal, ScVec,
-};
+use soroban_client::xdr::int128_helpers::*;
+use soroban_client::xdr::{Hash, ScAddress, ScMap, ScSymbol, ScVal, ScVec};
+use soroban_client::{Options, Server};
 use thiserror::Error;
 
 pub trait ReflectorContract {
@@ -241,9 +239,9 @@ pub enum ReflectorError {
     #[error("DefaultError")]
     DefaulError,
     #[error("SorobanError")]
-    SorobanError(#[from] soroban_client::xdr::xdr::next::Error),
+    SorobanError(#[from] soroban_client::xdr::Error),
     #[error("UnknownError")]
-    UnknownError(#[from] Box<dyn std::error::Error>),
+    UnknownError(#[from] soroban_client::error::Error),
 }
 
 pub struct ReflectorClient {
@@ -257,7 +255,7 @@ impl ReflectorClient {
         ReflectorClient {
             contract: Contracts::new(contract_id).unwrap(),
             network,
-            server: Server::new(rpc_url, opts),
+            server: Server::new(rpc_url, opts).expect("Cannot create new Server"),
         }
     }
 
@@ -265,7 +263,7 @@ impl ReflectorClient {
         &self,
         method: &str,
         params: Option<Vec<ScVal>>,
-    ) -> Result<RawSimulateTransactionResponse, ReflectorError> {
+    ) -> Result<SimulateTransactionResponse, ReflectorError> {
         let source_account = Rc::new(RefCell::new(
             Account::new(
                 "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
@@ -292,47 +290,35 @@ impl ReflectorContract for ReflectorClient {
     type Error = ReflectorError;
     async fn base(&self) -> Result<Asset, ReflectorError> {
         let response = self.invoke("base", None).await?;
-        if let Some(vres) = response.results {
-            let res = vres.first().unwrap().to_owned();
-            let val: Asset =
-                ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none())?.try_into()?;
-            return Ok(val);
+        match response.to_result() {
+            Some((ret, _)) => ret.try_into(),
+            _ => Err(ReflectorError::DefaulError),
         }
-        Err(ReflectorError::DefaulError)
     }
 
     async fn decimals(&self) -> Result<u32, Self::Error> {
         let response = self.invoke("decimals", None).await?;
-        if let Some(vres) = response.results {
-            let res = vres.first().unwrap().to_owned();
-            if let ScVal::U32(val) = ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none())? {
-                return Ok(val);
-            }
+        match response.to_result() {
+            Some((ScVal::U32(val), _)) => Ok(val),
+            _ => Err(ReflectorError::DefaulError),
         }
-        Err(ReflectorError::DefaulError)
     }
 
     async fn resolution(&self) -> Result<u32, Self::Error> {
         let response = self.invoke("resolution", None).await?;
-        if let Some(vres) = response.results {
-            let res = vres.first().unwrap().to_owned();
-            let decoded = ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none());
-            match decoded {
-                Ok(ScVal::U32(val)) => return Ok(val),
-                _ => return Err(ReflectorError::DefaulError),
-            }
+        match response.to_result() {
+            Some((ScVal::U32(val), _)) => Ok(val),
+            _ => Err(ReflectorError::DefaulError),
         }
-        Err(ReflectorError::DefaulError)
     }
 
     async fn period(&self) -> Result<Option<u64>, Self::Error> {
         let response = self.invoke("period", None).await?;
-        if let Some(vres) = response.results {
-            let res = vres.first().unwrap().to_owned();
-            let decoded = ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none());
-            match decoded {
-                Ok(ScVal::U64(v)) => return Ok(Some(v)),
-                _ => return Ok(None),
+        if let Some((ret, _)) = response.to_result() {
+            if let ScVal::U64(val) = ret {
+                return Ok(Some(val));
+            } else {
+                return Ok(None);
             }
         }
         Err(ReflectorError::DefaulError)
@@ -345,15 +331,10 @@ impl ReflectorContract for ReflectorClient {
 
     async fn last_timestamp(&self) -> Result<u64, Self::Error> {
         let response = self.invoke("last_timestamp", None).await?;
-        if let Some(vres) = response.results {
-            let res = vres.first().unwrap().to_owned();
-            let decoded = ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none());
-            match decoded {
-                Ok(ScVal::U64(v)) => return Ok(v),
-                _ => return Err(ReflectorError::DefaulError),
-            }
+        match response.to_result() {
+            Some((ScVal::U64(val), _)) => Ok(val),
+            _ => Err(ReflectorError::DefaulError),
         }
-        Err(ReflectorError::DefaulError)
     }
 
     async fn price(&self, asset: Asset, timestamp: u64) -> Result<Option<PriceData>, Self::Error> {
@@ -434,12 +415,11 @@ impl ReflectorContract for ReflectorClient {
         let response = self
             .invoke("twap", Some([val_asset, records.into()].into()))
             .await?;
-        if let Some(vres) = response.results {
-            let res = vres.first().unwrap().to_owned();
-            let decoded = ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none());
-            match decoded {
-                Ok(ScVal::I128(v)) => return Ok(Some(i128_from_pieces(v.hi, v.lo))),
-                _ => return Ok(None),
+        if let Some((ret, _)) = response.to_result() {
+            if let ScVal::I128(v) = ret {
+                return Ok(Some(i128_from_pieces(v.hi, v.lo)));
+            } else {
+                return Ok(None);
             }
         }
         Err(ReflectorError::DefaulError)
@@ -456,12 +436,11 @@ impl ReflectorContract for ReflectorClient {
         let response = self
             .invoke("x_twap", Some([val_base, val_quote, records.into()].into()))
             .await?;
-        if let Some(vres) = response.results {
-            let res = vres.first().unwrap().to_owned();
-            let decoded = ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none());
-            match decoded {
-                Ok(ScVal::I128(v)) => return Ok(Some(i128_from_pieces(v.hi, v.lo))),
-                _ => return Ok(None),
+        if let Some((ret, _)) = response.to_result() {
+            if let ScVal::I128(v) = ret {
+                return Ok(Some(i128_from_pieces(v.hi, v.lo)));
+            } else {
+                return Ok(None);
             }
         }
         Err(ReflectorError::DefaulError)
@@ -469,37 +448,25 @@ impl ReflectorContract for ReflectorClient {
 
     async fn version(&self) -> Result<u32, Self::Error> {
         let response = self.invoke("version", None).await?;
-        if let Some(vres) = response.results {
-            let res = vres.first().unwrap().to_owned();
-            let decoded = ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none());
-            match decoded {
-                Ok(ScVal::U32(v)) => return Ok(v),
-                _ => return Err(ReflectorError::DefaulError),
-            }
+        match response.to_result() {
+            Some((ScVal::U32(val), _)) => Ok(val),
+            _ => Err(ReflectorError::DefaulError),
         }
-        Err(ReflectorError::DefaulError)
     }
 
     async fn admin(&self) -> Result<Address, Self::Error> {
         let response = self.invoke("admin", None).await?;
-        if let Some(vres) = response.results {
-            let res = vres.first().unwrap().to_owned();
-            let decoded = ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none());
-            match decoded {
-                Ok(scval) => return Ok(Address::from_sc_val(&scval).unwrap()),
-                _ => return Err(ReflectorError::DefaulError),
-            }
+        match response.to_result() {
+            Some((ret, _)) => Ok(Address::from_sc_val(&ret).unwrap()),
+            _ => Err(ReflectorError::DefaulError),
         }
-        Err(ReflectorError::DefaulError)
     }
 }
 
-fn to_vec_asset(response: RawSimulateTransactionResponse) -> Result<Vec<Asset>, ReflectorError> {
-    if let Some(vres) = response.results {
-        let res = vres.first().unwrap().to_owned();
-        let decoded = ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none());
-        match decoded {
-            Ok(ScVal::Vec(Some(ScVec(v)))) => {
+fn to_vec_asset(response: SimulateTransactionResponse) -> Result<Vec<Asset>, ReflectorError> {
+    if let Some((ret, _)) = response.to_result() {
+        match ret {
+            ScVal::Vec(Some(ScVec(v))) => {
                 let vvv: Vec<Asset> = v.iter().map(|x| x.clone().try_into().unwrap()).collect();
                 return Ok(vvv);
             }
@@ -510,28 +477,21 @@ fn to_vec_asset(response: RawSimulateTransactionResponse) -> Result<Vec<Asset>, 
 }
 
 fn to_price_data(
-    response: RawSimulateTransactionResponse,
+    response: SimulateTransactionResponse,
 ) -> Result<Option<PriceData>, ReflectorError> {
-    if let Some(vres) = response.results {
-        let res = vres.first().unwrap().to_owned();
-        let decoded = ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none());
-        match decoded {
-            Ok(pricedata) => return Ok(Some(pricedata.try_into()?)),
-            _ => return Ok(None),
-        }
+    if let Some((ret, _)) = response.to_result() {
+        return Ok(Some(ret.try_into()?));
     }
 
     Err(ReflectorError::DefaulError)
 }
 
 fn to_vec_price_data(
-    response: RawSimulateTransactionResponse,
+    response: SimulateTransactionResponse,
 ) -> Result<Option<Vec<PriceData>>, ReflectorError> {
-    if let Some(vres) = response.results {
-        let res = vres.first().unwrap().to_owned();
-        let decoded = ScVal::from_xdr_base64(res.xdr.unwrap(), Limits::none());
-        match decoded {
-            Ok(ScVal::Vec(Some(ScVec(v)))) => {
+    if let Some((ret, _)) = response.to_result() {
+        match ret {
+            ScVal::Vec(Some(ScVec(v))) => {
                 let vvv: Vec<PriceData> = v.iter().map(|x| x.clone().try_into().unwrap()).collect();
                 return Ok(Some(vvv));
             }

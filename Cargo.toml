@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-soroban-client = "0.3.3"
+soroban-client = "0.4.4"
 stellar-strkey = "0.0.11"
 thiserror = "2.0.7"
 
